@@ -1,0 +1,13 @@
+# Compilación y caché del editor
+build/
+.cache/
+
+# Configuración local (ruta absoluta de esta computadora)
+/.vscode/
+
+# Material del curso
+*.pdf
+
+# Notas personales del equipo
+CANbus/CAMBIOS.md
+CANbus/GUIA_PRUEBAS.md
