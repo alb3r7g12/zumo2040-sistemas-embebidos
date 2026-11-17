@@ -58,6 +58,7 @@ typedef struct {
     // queda en ζ a cualquier velocidad (si k_e fuera fija, al acelerar oscilaría).
     float zeta;         // -    amortiguamiento deseado (0.7–1.0)
     float k_e_max;      // 1/m   límite de k_e a velocidades bajas
+    float approach_max; // rad   máximo ángulo de aproximación a la ruta (atan(k_e·e_y))
     float omega_max;    // rad/s límite de giro
     float wheel_base;   // m     separación entre orugas (medir en el Zumo)
     float wheel_max;    // m/s   velocidad máxima de una oruga
@@ -99,5 +100,10 @@ void follower_project(const segment_t *s, float x, float y,
                       float *t, float *e_y, float *path_theta);
 
 float follower_wrap_pi(float a);
+
+// Comando para cuando faltan poses (hueco de WiFi): misma velocidad y solo el giro
+// propio del tramo (v/R en un arco, 0 en una recta), sin la corrección de rumbo,
+// que sin pose nueva se pasaría.
+void follower_coast(const follower_t *f, float *v_left, float *v_right);
 
 #endif

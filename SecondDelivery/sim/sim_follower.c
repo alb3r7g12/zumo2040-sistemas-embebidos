@@ -73,6 +73,14 @@ int main(int argc, char **argv) {
     if (getenv("ZETA")) p.zeta = atof(getenv("ZETA"));
     if (getenv("K_TH")) p.k_theta = atof(getenv("K_TH"));
     if (getenv("ACC"))  p.accel = p.decel = atof(getenv("ACC"));
+    if (getenv("APPROACH")) p.approach_max = atof(getenv("APPROACH"));
+    // Ráfagas de WiFi (medidas el 17/11): cada BURST_T s hay un hueco de BURST s sin
+    // poses; las que llegan durante el hueco se entregan juntas al final y el Zumo
+    // usa solo la última. COAST_MS > 0: tras ese hueco el Zumo pasa a follower_coast().
+    float burst = getenv("BURST") ? atof(getenv("BURST")) : 0.0f;
+    float burst_t = getenv("BURST_T") ? atof(getenv("BURST_T")) : 0.8f;
+    float coast_ms = getenv("COAST_MS") ? atof(getenv("COAST_MS")) : 0.0f;
+    float t_max = getenv("T_MAX") ? atof(getenv("T_MAX")) : 60.0f;
 
     const float noise_xy = 0.005f;                    // σ = 5 mm (≈ ±1 cm)
     const float noise_th = 0.5f * (float)M_PI / 180;  // σ = 0.5° (≈ ±1°)
@@ -98,7 +106,8 @@ int main(int argc, char **argv) {
 
     printf("t,x,y,theta,seg,vl,vr,e_true\n");
     float t;
-    for (t = 0.0f; t < 60.0f; t += dt) {
+    bool coasting = false;
+    for (t = 0.0f; t < t_max; t += dt) {
         // Cámara: toma la foto ahora, llega "cam_delay" después.
         if (t >= next_cam) {
             int i = (qh + qn) % QN;
@@ -106,12 +115,18 @@ int main(int argc, char **argv) {
             q[i].y = y + gauss(noise_xy);
             q[i].theta = th + gauss(noise_th);
             qt[i] = t + cam_delay;
+            if (burst > 0.0f) {                       // llega dentro de un hueco: se retiene
+                float ph = fmodf(qt[i], burst_t);
+                if (ph < burst) qt[i] += burst - ph;
+            }
             if (qn < QN) qn++;
             next_cam += 1.0f / cam_hz;
         }
         if (qn > 0 && t >= qt[qh]) {                  // llega una pose al Zumo
             pose_t meas = q[qh];
             qh = (qh + 1) % QN; qn--;
+            while (qn > 0 && t >= qt[qh]) { meas = q[qh]; qh = (qh + 1) % QN; qn--; }  // ráfaga
+            coasting = false;
             bool running = follower_update(&f, &meas, t - last_upd, &cl, &cr);
             last_upd = t;
             if (running && f.cur != last_seg) {
@@ -121,6 +136,10 @@ int main(int argc, char **argv) {
                 last_seg = f.cur;
             }
             if (!running) break;
+        }
+        if (coast_ms > 0.0f && !coasting && t - last_upd > coast_ms / 1000.0f) {
+            follower_coast(&f, &cl, &cr);
+            coasting = true;
         }
         // Planta: motores de primer orden + uniciclo.
         vl += (cl * asym - vl) * dt / tau;

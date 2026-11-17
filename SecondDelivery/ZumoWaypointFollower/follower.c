@@ -30,6 +30,9 @@ follower_params_t follower_default_params(void) {
         .k_theta    = 4.0f,
         .zeta       = 0.8f,
         .k_e_max    = 30.0f,
+        // Vuelta 4 (17/11): con 6.5 cm de error a 0.08 m/s el ángulo pedido llegaba a ~50°
+        // y el Zumo se cruzaba al otro lado (zigzag). 35° corrige igual sin pasarse.
+        .approach_max = 0.61f,
         .omega_max  = 6.0f,
         .wheel_base = 0.085f,
         .wheel_max  = 0.60f,
@@ -169,7 +172,7 @@ bool follower_update(follower_t *f, const pose_t *pose, float dt,
     // Dirección: rumbo de referencia = tangente − atan(k_e·e_y).
     float k_e = f->p.k_theta / (4.0f * f->p.zeta * f->p.zeta * fmaxf(v, 0.05f));
     if (k_e > f->p.k_e_max) k_e = f->p.k_e_max;
-    float th_ref = path_th - atanf(k_e * e_y);
+    float th_ref = path_th - clampf(atanf(k_e * e_y), -f->p.approach_max, f->p.approach_max);
     float e_th = follower_wrap_pi(th_ref - th);
     float omega_ff = (s->type == SEG_ARC) ? s->dir * v / s->r : 0.0f;
     float omega = clampf(omega_ff + f->p.k_theta * e_th, -f->p.omega_max, f->p.omega_max);
@@ -184,4 +187,14 @@ bool follower_update(follower_t *f, const pose_t *pose, float dt,
     f->t = t; f->e_y = e_y; f->e_theta = e_th;
     *v_left = vl; *v_right = vr;
     return true;
+}
+
+void follower_coast(const follower_t *f, float *v_left, float *v_right) {
+    *v_left = *v_right = 0.0f;
+    if (f->done) return;
+    const segment_t *s = &f->seg[f->cur];
+    float v = f->v_cmd;
+    float omega = (s->type == SEG_ARC) ? s->dir * v / s->r : 0.0f;
+    *v_left = v - omega * f->p.wheel_base * 0.5f;
+    *v_right = v + omega * f->p.wheel_base * 0.5f;
 }
